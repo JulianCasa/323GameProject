@@ -2,7 +2,7 @@
 <map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="250" height="210" tilewidth="8" tileheight="8" infinite="0" nextlayerid="4" nextobjectid="200">
  <tileset firstgid="1" name="Abandoned Lab" tilewidth="8" tileheight="8" tilecount="6664" columns="68">
   <grid orientation="orthogonal" width="16" height="16"/>
-  <image source="../Itch release tileset example sprites 01 2x.png" width="544" height="784"/>
+  <image source="../Sprites/Itch release tileset example sprites 01 2x.png" width="544" height="784"/>
  </tileset>
  <layer id="1" name="Map" width="250" height="210">
   <data encoding="csv">
