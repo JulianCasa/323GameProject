@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="250" height="210" tilewidth="8" tileheight="8" infinite="0" nextlayerid="3" nextobjectid="198">
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="250" height="210" tilewidth="8" tileheight="8" infinite="0" nextlayerid="4" nextobjectid="200">
  <tileset firstgid="1" name="Abandoned Lab" tilewidth="8" tileheight="8" tilecount="6664" columns="68">
   <grid orientation="orthogonal" width="16" height="16"/>
-  <image source="../Sprites/Itch release tileset example sprites 01 2x.png" width="544" height="784"/>
+  <image source="../Itch release tileset example sprites 01 2x.png" width="544" height="784"/>
  </tileset>
  <layer id="1" name="Map" width="250" height="210">
   <data encoding="csv">
@@ -218,6 +218,9 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
+ <objectgroup id="3" name="Start">
+  <object id="198" name="Start" x="487.913" y="744.23" width="16.1336" height="23.68"/>
+ </objectgroup>
  <objectgroup id="2" name="Walls">
   <object id="3" name="Wall" x="408.076" y="656.237" width="23.5507" height="231.313"/>
   <object id="4" name="Wall" x="430.087" y="656.427" width="145.919" height="31.5052"/>
