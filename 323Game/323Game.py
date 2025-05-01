@@ -30,17 +30,29 @@ pygame.display.set_caption("Lone Voyager")
 clock = pygame.time.Clock()
 
 class Camera:
-    def __init__(self, width, height):
+    def __init__(self, width, height, zoom=1.5):
         self.camera = pygame.Rect(0, 0, width, height)
         self.width = width
         self.height = height
-        
+        self.zoom = zoom
     
     def apply(self, entity):
-        return entity.rect.move(self.camera.topleft)
+        rect = entity.rect.move(self.camera.topleft)
+        return pygame.Rect(
+            rect.x * self.zoom,
+            rect.y * self.zoom,
+            rect.width * self.zoom,
+            rect.height * self.zoom
+        )
     
     def apply_rect(self, rect):
-        return rect.move(self.camera.topleft)
+        moved = rect.move(self.camera.topleft)
+        return pygame.Rect(
+            moved.x * self.zoom,
+            moved.y * self.zoom,
+            moved.width * self.zoom,
+            moved.height * self.zoom
+        )
     
     def update(self, target):
         x = -target.rect.centerx + int(SCREEN_WIDTH / 2)
@@ -48,10 +60,10 @@ class Camera:
         
         x = min(0, x)
         y = min(0, y)
-        x = max(-(self.width - SCREEN_WIDTH), x)
-        y = max(-(self.height - SCREEN_HEIGHT), y)
+        x = max(-(self.width * self.zoom - SCREEN_WIDTH), x)
+        y = max(-(self.height * self.zoom - SCREEN_HEIGHT), y)
         
-        self.camera = pygame.Rect(x, y, self.width, self.height)
+        self.camera = pygame.Rect(x, y, self.width * self.zoom, self.height * self.zoom)
 
 # Load pixel font
 pixel_font13 = pygame.font.Font("PressStart2P-Regular.ttf", 13)
@@ -67,13 +79,19 @@ def draw_text(surface, text, size, color, x, y, font=None):
     text_rect = text_surface.get_rect(center=(x, y))
     surface.blit(text_surface, text_rect)
 
-def draw_map(surface, tmx_data):
+def draw_map(surface, tmx_data, camera, zoom=1):
     for layer in tmx_data.visible_layers:
         if isinstance(layer, pytmx.TiledTileLayer):
             for x, y, gid in layer:
                 tile = tmx_data.get_tile_image_by_gid(gid)
                 if tile:
-                    surface.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight)) 
+                    # Scale the tile based on the zoom level
+                    scaled_tile = pygame.transform.scale(tile, 
+                        (int(tmx_data.tilewidth * zoom), int(tmx_data.tileheight * zoom)))
+                    # Apply camera offset and zoom to the tile's position
+                    surface.blit(scaled_tile, 
+                                 (x * tmx_data.tilewidth * zoom + camera.camera.x, 
+                                  y * tmx_data.tileheight * zoom + camera.camera.y))
 
 def show_start_screen():
     screen.fill(BLACK)
@@ -423,7 +441,9 @@ class Player(AnimatedSprite):
         self.sprite_height = 120
         self.cols = 2
         self.rows = 4
-        
+        self.display_width = 16
+        self.display_height = 24
+
         sprite_sheet = self.load_sprite_sheet("player.png", self.cols, self.rows)
         
         self.animations = {
@@ -470,7 +490,8 @@ class Player(AnimatedSprite):
                            row * self.sprite_height,
                            self.sprite_width,
                            self.sprite_height))
-                frames.append(frame)
+                scaled_frame = pygame.transform.scale(frame, (self.display_width, self.display_height))
+                frames.append(scaled_frame)
         return frames
     
     def update(self, dt, walls, signs, terminal, mobs=None, camera=None):
@@ -554,6 +575,8 @@ class Mob(AnimatedSprite):
         self.rows = 1
         self.direction = pygame.Vector2(0, 0)
         self.pos = pygame.Vector2(x, y)
+        self.display_width = 16
+        self.display_height = 24
 
         self.chasing = False
         self.chase_distance = 200
@@ -607,7 +630,8 @@ class Mob(AnimatedSprite):
                            row * self.sprite_height,
                            self.sprite_width,
                            self.sprite_height))
-                frames.append(frame)
+                scaled_frame = pygame.transform.scale(frame, (self.display_width, self.display_height))
+                frames.append(scaled_frame)
         return frames
     
     def update_speed(self, suspicion_modifier):
@@ -734,7 +758,7 @@ def main():
     
     wheel_cipher = WheelCipher()
     suspicion_system = SuspicionSystem()
-    camera = Camera(WORLD_WIDTH, WORLD_HEIGHT)
+    camera = Camera(WORLD_WIDTH, WORLD_HEIGHT, zoom=1)
     
     running = True
     while running:
@@ -855,11 +879,14 @@ def main():
                 playing = False
             
             screen.fill(BLACK)
-            draw_map(screen, tmx_data)
+            draw_map(screen, tmx_data, camera, zoom=camera.zoom)
             
             # Draw all sprites with camera offset
             for entity in all_sprites:
-                screen.blit(entity.image, camera.apply(entity))
+                screen.blit(pygame.transform.scale(entity.image, 
+                (int(entity.rect.width * camera.zoom),
+                    int(entity.rect.height * camera.zoom)
+                    )), camera.apply(entity))
             
             # Draw suspicion effects (screen space)
             suspicion_system.draw_effects(screen)
