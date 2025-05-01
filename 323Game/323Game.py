@@ -727,6 +727,7 @@ def main():
     if not show_start_screen():
         return
     
+    # Load the tmx map
     base_path = os.path.dirname(__file__)
     tmx_path = os.path.join(base_path, "Maps", "TLSBNR_MainMap.tmx")
     tmx_data = pytmx.util_pygame.load_pygame(tmx_path)
