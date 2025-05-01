@@ -3,7 +3,6 @@ import random
 import pygame
 import os
 import pytmx
-import pytmx
 
 # Initialize pygame
 pygame.init()
@@ -13,6 +12,8 @@ SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 FPS = 60
 PLAYER_SPEED = 300
+WORLD_WIDTH = 3000
+WORLD_HEIGHT = 3000
 
 # Colors
 BLACK = (0, 0, 0)
@@ -27,6 +28,30 @@ PURPLE = (128, 0, 128)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Lone Voyager")
 clock = pygame.time.Clock()
+
+class Camera:
+    def __init__(self, width, height):
+        self.camera = pygame.Rect(0, 0, width, height)
+        self.width = width
+        self.height = height
+        
+    
+    def apply(self, entity):
+        return entity.rect.move(self.camera.topleft)
+    
+    def apply_rect(self, rect):
+        return rect.move(self.camera.topleft)
+    
+    def update(self, target):
+        x = -target.rect.centerx + int(SCREEN_WIDTH / 2)
+        y = -target.rect.centery + int(SCREEN_HEIGHT / 2)
+        
+        x = min(0, x)
+        y = min(0, y)
+        x = max(-(self.width - SCREEN_WIDTH), x)
+        y = max(-(self.height - SCREEN_HEIGHT), y)
+        
+        self.camera = pygame.Rect(x, y, self.width, self.height)
 
 # Load pixel font
 pixel_font13 = pygame.font.Font("PressStart2P-Regular.ttf", 13)
@@ -48,7 +73,7 @@ def draw_map(surface, tmx_data):
             for x, y, gid in layer:
                 tile = tmx_data.get_tile_image_by_gid(gid)
                 if tile:
-                    surface.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight))
+                    surface.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight)) 
 
 def show_start_screen():
     screen.fill(BLACK)
@@ -137,6 +162,46 @@ def show_message_screen(message):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 waiting = False
     return True
+
+def show_code_input_screen():
+    code = ""
+    input_active = True
+    
+    while input_active:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return False, False
+            
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    input_active = False
+                elif event.key == pygame.K_ESCAPE:
+                    return False, False
+                elif event.key == pygame.K_BACKSPACE:
+                    code = code[:-1]
+                elif event.unicode.isdigit() and len(code) < 4:
+                    code += event.unicode
+        
+        # Draw the screen
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+        
+        input_rect = pygame.Rect(SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 - 50, 300, 100)
+        pygame.draw.rect(screen, WHITE, input_rect)
+        pygame.draw.rect(screen, BLACK, input_rect, 2)
+        
+        # Display asterisks instead of numbers
+        display_code = "*" * len(code)
+        draw_text(screen, "Enter 4-digit code:", 36, BLACK, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80)
+        draw_text(screen, display_code, 48, BLACK, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        draw_text(screen, "Press ENTER to submit", 24, BLACK, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60)
+        
+        pygame.display.flip()
+        clock.tick(FPS)
+    
+    return True, code == "8514"
 
 class WheelCipher:
     def __init__(self):
@@ -290,6 +355,16 @@ class Sign(pygame.sprite.Sprite):
         if suspicion_level > high_threshold and self.high_suspicion_text:
             return self.high_suspicion_text
         return self.normal_text
+    
+class CodeTerminal(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((60, 80))
+        self.image.fill(PURPLE)
+        pygame.draw.rect(self.image, BLACK, (0, 0, 60, 80), 2)
+        draw_text(self.image, "CODE", 20, WHITE, 30, 40)
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.interact_rect = pygame.Rect(x - 40, y - 40, 140, 160)
 
 class MusicPlayer:
     def __init__(self, music_file):
@@ -336,7 +411,7 @@ class AnimatedSprite(pygame.sprite.Sprite):
         
         old_pos = self.pos.copy()
         self.pos += self.direction * self.speed * dt
-        self.rect.center = self.pos
+        self.rect.center = (int(self.pos.x), int(self.pos.y))
         self.rect.clamp_ip(pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
         self.pos.x, self.pos.y = self.rect.center
         
@@ -370,7 +445,7 @@ class Player(AnimatedSprite):
         
     def load_sprite_sheet(self, filename, cols, rows):
         try:
-            full_path = os.path.join("Sprites", filename)
+            full_path = os.path.join("323Game", "Sprites", filename)
             sprite_sheet = pygame.image.load(full_path).convert_alpha()
         except:
             sprite_sheet = pygame.Surface((cols * self.sprite_width, rows * self.sprite_height), pygame.SRCALPHA)
@@ -398,7 +473,7 @@ class Player(AnimatedSprite):
                 frames.append(frame)
         return frames
     
-    def update(self, dt, walls, signs, mobs=None):
+    def update(self, dt, walls, signs, terminal, mobs=None, camera=None):
         keys = pygame.key.get_pressed()
         move_vec = pygame.Vector2(0, 0)
         
@@ -442,13 +517,22 @@ class Player(AnimatedSprite):
             self.pos = old_pos
             self.rect.center = self.pos
         
+        # Check for interactions
         self.can_interact = False
         self.near_sign = None
+        self.near_terminal = None
+        
+        # Check signs
         for sign in signs:
             if self.rect.colliderect(sign.interact_rect):
                 self.can_interact = True
                 self.near_sign = sign
                 break
+        
+        # Check terminal
+        if terminal and self.rect.colliderect(terminal.interact_rect):
+            self.can_interact = True
+            self.near_terminal = terminal
         
         if self.stun_cooldown > 0:
             self.stun_cooldown -= dt
@@ -464,45 +548,55 @@ class Player(AnimatedSprite):
 
 class Mob(AnimatedSprite):
     def __init__(self, x, y):
-        self.sprite_width = 64
-        self.sprite_height = 64
-        self.cols = 4
+        self.sprite_width = 42
+        self.sprite_height = 48
+        self.cols = 12
         self.rows = 1
+        self.direction = pygame.Vector2(0, 0)
+        self.pos = pygame.Vector2(x, y)
 
         self.chasing = False
         self.chase_distance = 200
         self.base_speed = 100
         self.chase_speed = 150
         self.speed = self.base_speed
-        self.chase_speed = self.chase_speed
         self.wander_time = 0
+        self.wander_direction = pygame.Vector2(0, 0)
+
+        # Randomize animation start for each mob
+        self.animation_speed = 0.1
+        self.animation_time = random.uniform(0, self.animation_speed * 12)
         
         self.stunned = False
         self.stun_timer = 0
         self.normal_color = (255, 255, 255)
         self.stunned_color = (100, 100, 255)
         
-        sprite_sheet = self.load_sprite_sheet("Golem_Run.png", self.cols, self.rows)
+        sprite_sheet = self.load_sprite_sheet("enemy.png", self.cols, self.rows)
         
         self.animations = {
             "right": sprite_sheet
         }
         
         super().__init__((x, y), self.animations["right"])
+        self.current_frame = random.randint(0, 11)  # Random starting frame
 
     def load_sprite_sheet(self, filename, cols, rows):
         try:
-            full_path = os.path.join("Sprites", filename)
+            full_path = os.path.join("323Game", "Sprites", filename)
             sprite_sheet = pygame.image.load(full_path).convert_alpha()
         except:
+            # Create placeholder sprite sheet
             sprite_sheet = pygame.Surface((cols * self.sprite_width, rows * self.sprite_height), pygame.SRCALPHA)
-            for row in range(rows):
-                for col in range(cols):
-                    x = col * self.sprite_width
-                    y = row * self.sprite_height
-                    color = (row * 60 % 255, 100 + col * 30 % 155, 50 + (row + col) * 20 % 205)
-                    pygame.draw.rect(sprite_sheet, color, (x, y, self.sprite_width, self.sprite_height))
-                    pygame.draw.rect(sprite_sheet, (0, 0, 0), (x, y, self.sprite_width, self.sprite_height), 1)
+            for col in range(cols):
+                x = col * self.sprite_width
+                y = 0
+                color = (100 + col * 10 % 155, 50 + col * 20 % 205, 150 + col * 5 % 105)
+                pygame.draw.rect(sprite_sheet, color, (x, y, self.sprite_width, self.sprite_height))
+                pygame.draw.rect(sprite_sheet, (0, 0, 0), (x, y, self.sprite_width, self.sprite_height), 1)
+                font = pygame.font.SysFont(None, 20)
+                text = font.render(f"Frame {col+1}", True, (0, 0, 0))
+                sprite_sheet.blit(text, (x + 5, y + 5))
         
         frames = []
         for row in range(rows):
@@ -611,15 +705,35 @@ class Mob(AnimatedSprite):
         for frame in self.frames:
             frame.fill(self.stunned_color, special_flags=pygame.BLEND_MULT)
 
+def show_win_screen():
+    screen.fill(BLACK)
+    draw_text(screen, "YOU WIN!", 64, GREEN, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4)
+    draw_text(screen, "Congratulations! You solved the puzzle!", 36, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+    draw_text(screen, "Press any key to exit", 36, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT * 3/4)
+    pygame.display.flip()
+    
+    waiting = True
+    while waiting:
+        clock.tick(FPS)
+        #for event in pygame.event.get():
+        #    if event.type == pygame.QUIT:
+        #        pygame.quit()
+        #        return False
+        #    if event.type == pygame.KEYUP:
+        #        return True
+
+
 def main():
     if not show_start_screen():
         return
     
-    # Load the tmx map
-    tmx_data = pytmx.util_pygame.load_pygame(os.path.join("Maps", "LSBNR_MainMap.tmx"))
+    base_path = os.path.dirname(__file__)
+    tmx_path = os.path.join(base_path, "Maps", "TLSBNR_MainMap.tmx")
+    tmx_data = pytmx.util_pygame.load_pygame(tmx_path)
     
     wheel_cipher = WheelCipher()
     suspicion_system = SuspicionSystem()
+    camera = Camera(WORLD_WIDTH, WORLD_HEIGHT)
     
     running = True
     while running:
@@ -631,20 +745,7 @@ def main():
         for obj in tmx_data.objects:
             if obj.name == "Wall":
                 wall = Wall(obj.x, obj.y, obj.width, obj.height)
-                all_sprites.add(wall)
                 walls.add(wall)
-
-        #wall_positions = [
-        #    (100, 100, 200, 50),
-        #    (400, 300, 50, 200),
-        #    (700, 200, 200, 50),
-        #    (900, 500, 300, 50)
-        #]
-
-        #for x, y, w, h in wall_positions:
-        #    wall = Wall(x, y, w, h)
-        #    all_sprites.add(wall)
-        #    walls.add(wall)
 
         sign1 = Sign(300, 200, 
                     "Welcome to Lone Voyager! Press O to interact with signs.",
@@ -657,7 +758,18 @@ def main():
         signs.add(sign1)
         signs.add(sign2)
 
-        player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        # Add the code terminal
+        terminal = CodeTerminal(2000, 500)
+        all_sprites.add(terminal)
+
+        start_x, start_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+
+        for obj in tmx_data.objects:
+            if obj.name == "Start":
+                start_x, start_y = obj.x, obj.y
+                break
+
+        player = Player(start_x, start_y) 
         all_sprites.add(player)
 
         default_music = MusicPlayer("2.Aria of the Soul(P4).mp3")
@@ -676,6 +788,9 @@ def main():
         chase_music_playing = False
         
         while playing:
+            # Update camera position
+            camera.update(player)
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     playing = False
@@ -685,10 +800,26 @@ def main():
                         playing = False
                         running = False
                     elif event.key == pygame.K_o and player.can_interact:
-                        sign_text = player.near_sign.get_text(suspicion_system.suspicion)
-                        if not show_message_screen(sign_text):
-                            playing = False
-                            running = False
+                        if player.near_sign:
+                            sign_text = player.near_sign.get_text(suspicion_system.suspicion)
+                            if not show_message_screen(sign_text):
+                                playing = False
+                                running = False
+                        elif player.near_terminal:
+                            # Show code input screen
+                            continue_game, code_correct = show_code_input_screen()
+                            if not continue_game:
+                                playing = False
+                                running = False
+                            elif code_correct:
+                                # Player won!
+                                if show_win_screen():
+                                    playing = False
+                                    running = False
+                    elif event.key == pygame.K_i:
+                        wheel_cipher.toggle()
+                    elif wheel_cipher.visible and event.key == pygame.K_RETURN:
+                        wheel_cipher.toggle()
             
             any_chasing = False
             for mob in mobs:
@@ -701,8 +832,11 @@ def main():
             for mob in mobs:
                 mob.update_speed(suspicion_modifier)
             
-            player.update(dt, walls, signs, mobs)
-            
+            if not wheel_cipher.visible:
+                player.update(dt, walls, signs, terminal, mobs, camera)
+            else:
+                wheel_cipher.update()
+
             if any_chasing:
                 if not chase_music_playing:
                     default_music.stop()
@@ -720,11 +854,27 @@ def main():
                 playing = False
             
             screen.fill(BLACK)
-            all_sprites.draw(screen)
+            draw_map(screen, tmx_data)
             
+            # Draw all sprites with camera offset
+            for entity in all_sprites:
+                screen.blit(entity.image, camera.apply(entity))
+            
+            # Draw suspicion effects (screen space)
+            suspicion_system.draw_effects(screen)
+            
+            # Draw wheel cipher (screen space)
+            wheel_cipher.draw(screen, suspicion_system.suspicion)
+
+            # Draw UI elements (screen space)
             if player.can_interact:
-                draw_text(screen, "Press O to read", 24, WHITE, player.rect.centerx, player.rect.top - 20)
-            
+                # Convert world position to screen position for interaction prompt
+                screen_pos = camera.apply_rect(player.rect).centerx, camera.apply_rect(player.rect).top - 20
+                if player.near_terminal:
+                    draw_text(screen, "Press O to access terminal", 24, WHITE, *screen_pos)
+                else:
+                    draw_text(screen, "Press O to read", 24, WHITE, *screen_pos)
+
             suspicion_system.draw_effects(screen)
             
             if player.stun_cooldown > 0:
@@ -735,6 +885,11 @@ def main():
             else:
                 draw_text(screen, "Press P to stun nearby enemies", 24, WHITE, SCREEN_WIDTH // 2, 30)
             
+            if wheel_cipher.visible:
+                draw_text(screen, "Press I to close cipher wheel", 24, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 30)
+            else:
+                draw_text(screen, "Press I to open cipher wheel", 24, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 30)
+
             pygame.display.flip()
             dt = clock.tick(FPS) / 1000
         
