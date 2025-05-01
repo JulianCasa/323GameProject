@@ -616,7 +616,9 @@ def main():
         return
     
     # Load the tmx map
-    tmx_data = pytmx.util_pygame.load_pygame(os.path.join("Maps", "LSBNR_MainMap.tmx"))
+    base_path = os.path.dirname(__file__)
+    tmx_path = os.path.join(base_path, "Maps", "TLSBNR_MainMap.tmx")
+    tmx_data = pytmx.util_pygame.load_pygame(tmx_path)
     
     wheel_cipher = WheelCipher()
     suspicion_system = SuspicionSystem()
@@ -631,7 +633,6 @@ def main():
         for obj in tmx_data.objects:
             if obj.name == "Wall":
                 wall = Wall(obj.x, obj.y, obj.width, obj.height)
-                all_sprites.add(wall)
                 walls.add(wall)
 
         #wall_positions = [
