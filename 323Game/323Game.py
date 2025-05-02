@@ -11,7 +11,7 @@ pygame.init()
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 FPS = 60
-PLAYER_SPEED = 300
+PLAYER_SPEED = 150 # change for testing
 WORLD_WIDTH = 3000
 WORLD_HEIGHT = 3000
 
@@ -41,8 +41,8 @@ class Camera:
         return pygame.Rect(
             rect.x * self.zoom,
             rect.y * self.zoom,
-            rect.width * self.zoom,
-            rect.height * self.zoom
+            rect.width,  # don't scale width here
+            rect.height  # don't scale height here
         )
     
     def apply_rect(self, rect):
@@ -55,14 +55,15 @@ class Camera:
         )
     
     def update(self, target):
-        x = -target.rect.centerx + int(SCREEN_WIDTH / 2)
-        y = -target.rect.centery + int(SCREEN_HEIGHT / 2)
-        
+        x = -target.rect.centerx * self.zoom + SCREEN_WIDTH / 2
+        y = -target.rect.centery * self.zoom + SCREEN_HEIGHT / 2
+
+        # Clamp camera to world bounds
         x = min(0, x)
         y = min(0, y)
         x = max(-(self.width * self.zoom - SCREEN_WIDTH), x)
         y = max(-(self.height * self.zoom - SCREEN_HEIGHT), y)
-        
+
         self.camera = pygame.Rect(x, y, self.width * self.zoom, self.height * self.zoom)
 
 # Load pixel font
@@ -430,7 +431,8 @@ class AnimatedSprite(pygame.sprite.Sprite):
         old_pos = self.pos.copy()
         self.pos += self.direction * self.speed * dt
         self.rect.center = (int(self.pos.x), int(self.pos.y))
-        self.rect.clamp_ip(pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+        #self.rect.clamp_ip(pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.rect.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
         self.pos.x, self.pos.y = self.rect.center
         
         return old_pos
@@ -557,6 +559,12 @@ class Player(AnimatedSprite):
         
         if self.stun_cooldown > 0:
             self.stun_cooldown -= dt
+
+        # Check is still slow, reset speed
+        if hasattr(self, 'slow_timer') and self.slow_timer > 0:
+            self.slow_timer -= dt
+            if self.slow_timer <= 0:
+                self.speed = PLAYER_SPEED
     
     def stun_nearby_mobs(self, mobs):
         for mob in mobs:
@@ -566,6 +574,10 @@ class Player(AnimatedSprite):
             
             if distance <= self.stun_radius:
                 mob.get_stunned(self.stun_duration)
+
+    def slow_down(self):
+        self.speed = PLAYER_SPEED * 0.5  # or any percentage you want
+        self.slow_timer = 2.0  # lasts for 2 seconds
 
 class Mob(AnimatedSprite):
     def __init__(self, x, y):
@@ -802,11 +814,21 @@ def main():
         default_music.play()
         default_music.set_volume(1.0)
         
+        # Spawns mob randomly at the given mobspawn object
+        # Collect all MobSpawn points from the map
+        spawn_points = [obj for obj in tmx_data.objects if obj.name == "MobSpawn"]
+
+        # Shuffle or sample from the list
+        num_mobs_to_spawn = 7
+        chosen_spawns = random.sample(spawn_points, min(num_mobs_to_spawn, len(spawn_points)))
+
+        # Spawn mobs at selected locations
         mobs = pygame.sprite.Group()
-        for i in range(5):
-            mob = Mob(random.randint(0, SCREEN_WIDTH), random.randint(0, SCREEN_HEIGHT))
+        for spawn in chosen_spawns:
+            mob = Mob(spawn.x, spawn.y)
             all_sprites.add(mob)
             mobs.add(mob)
+
 
         playing = True
         dt = 0
@@ -874,9 +896,23 @@ def main():
                     default_music.play()
                     chase_music_playing = False
             
+            # Instead of game over, player collision with mob slows player down
             collisions = pygame.sprite.spritecollide(player, mobs, False)
             if collisions:
-                playing = False
+                player.slow_down()
+                for mob in collisions:
+                    mobs.remove(mob)
+                    all_sprites.remove(mob)
+
+                    # Pick new spawn point not in use
+                    used_positions = {(m.rect.x, m.rect.y) for m in mobs}
+                    available_spawns = [pt for pt in spawn_points if (pt.x, pt.y) not in used_positions]
+
+                    if available_spawns:
+                        new_spawn = random.choice(available_spawns)
+                        new_mob = Mob(new_spawn.x, new_spawn.y)
+                        mobs.add(new_mob)
+                        all_sprites.add(new_mob)
             
             screen.fill(BLACK)
             draw_map(screen, tmx_data, camera, zoom=camera.zoom)
