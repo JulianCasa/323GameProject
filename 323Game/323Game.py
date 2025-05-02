@@ -30,41 +30,32 @@ pygame.display.set_caption("Lone Voyager")
 clock = pygame.time.Clock()
 
 class Camera:
-    def __init__(self, width, height, zoom=1.5):
+    def __init__(self, width, height, zoom=1):
         self.camera = pygame.Rect(0, 0, width, height)
         self.width = width
         self.height = height
         self.zoom = zoom
-    
+
     def apply(self, entity):
-        rect = entity.rect.move(self.camera.topleft)
         return pygame.Rect(
-            rect.x * self.zoom,
-            rect.y * self.zoom,
-            rect.width,  # don't scale width here
-            rect.height  # don't scale height here
-        )
-    
+            (entity.rect.x - self.camera.x) * self.zoom,
+            (entity.rect.y - self.camera.y) * self.zoom,
+            entity.rect.width * self.zoom,
+            entity.rect.height * self.zoom
+        ).topleft  # Only need position for blit
+
     def apply_rect(self, rect):
-        moved = rect.move(self.camera.topleft)
         return pygame.Rect(
-            moved.x * self.zoom,
-            moved.y * self.zoom,
-            moved.width * self.zoom,
-            moved.height * self.zoom
+            (rect.x - self.camera.x) * self.zoom,
+            (rect.y - self.camera.y) * self.zoom,
+            rect.width * self.zoom,
+            rect.height * self.zoom
         )
-    
+
     def update(self, target):
-        x = -target.rect.centerx * self.zoom + SCREEN_WIDTH / 2
-        y = -target.rect.centery * self.zoom + SCREEN_HEIGHT / 2
-
-        # Clamp camera to world bounds
-        x = min(0, x)
-        y = min(0, y)
-        x = max(-(self.width * self.zoom - SCREEN_WIDTH), x)
-        y = max(-(self.height * self.zoom - SCREEN_HEIGHT), y)
-
-        self.camera = pygame.Rect(x, y, self.width * self.zoom, self.height * self.zoom)
+        x = -target.rect.centerx + SCREEN_WIDTH / (2 * self.zoom)
+        y = -target.rect.centery + SCREEN_HEIGHT / (2 * self.zoom)
+        self.camera = pygame.Rect(-x, -y, self.width, self.height)
 
 # Load pixel font
 pixel_font13 = pygame.font.Font("PressStart2P-Regular.ttf", 13)
@@ -86,13 +77,21 @@ def draw_map(surface, tmx_data, camera, zoom=1):
             for x, y, gid in layer:
                 tile = tmx_data.get_tile_image_by_gid(gid)
                 if tile:
-                    # Scale the tile based on the zoom level
-                    scaled_tile = pygame.transform.scale(tile, 
-                        (int(tmx_data.tilewidth * zoom), int(tmx_data.tileheight * zoom)))
-                    # Apply camera offset and zoom to the tile's position
-                    surface.blit(scaled_tile, 
-                                 (x * tmx_data.tilewidth * zoom + camera.camera.x, 
-                                  y * tmx_data.tileheight * zoom + camera.camera.y))
+                    # Scale the tile based on zoom
+                    scaled_tile = pygame.transform.scale(
+                        tile,
+                        (int(tmx_data.tilewidth * zoom), int(tmx_data.tileheight * zoom))
+                    )
+
+                    # Calculate world position
+                    world_x = x * tmx_data.tilewidth
+                    world_y = y * tmx_data.tileheight
+
+                    # Apply camera and zoom
+                    screen_x = (world_x - camera.camera.x) * zoom
+                    screen_y = (world_y - camera.camera.y) * zoom
+
+                    surface.blit(scaled_tile, (screen_x, screen_y))
 
 def show_start_screen():
     screen.fill(BLACK)
@@ -770,7 +769,7 @@ def main():
     
     wheel_cipher = WheelCipher()
     suspicion_system = SuspicionSystem()
-    camera = Camera(WORLD_WIDTH, WORLD_HEIGHT, zoom=1)
+    camera = Camera(WORLD_WIDTH, WORLD_HEIGHT, zoom=3)
     
     running = True
     while running:
@@ -918,11 +917,15 @@ def main():
             draw_map(screen, tmx_data, camera, zoom=camera.zoom)
             
             # Draw all sprites with camera offset
+            # Apply zoom scaling to sprite rendering
             for entity in all_sprites:
-                screen.blit(pygame.transform.scale(entity.image, 
-                (int(entity.rect.width * camera.zoom),
-                    int(entity.rect.height * camera.zoom)
-                    )), camera.apply(entity))
+                scaled_image = pygame.transform.scale(
+                    entity.image,
+                    (int(entity.rect.width * camera.zoom), int(entity.rect.height * camera.zoom))
+                )
+                screen.blit(scaled_image, camera.apply(entity))
+
+
             
             # Draw suspicion effects (screen space)
             suspicion_system.draw_effects(screen)
